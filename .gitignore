@@ -1,0 +1,6 @@
+db.sqlite3
+*.png
+Moodify_Songs
+media
+.vscode
+
