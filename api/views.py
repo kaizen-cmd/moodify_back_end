@@ -1,93 +1,153 @@
 from rest_framework.viewsets import ViewSet
 from rest_framework.response import Response
-from django.contrib.sites.shortcuts import get_current_site
-from api.models import *
-import base64
-from moodifymodel.recog3 import class_labels, return_mood
-import os
-from .models import Song, SongMood, User
-from argparse import Namespace
+from rest_framework import status
+from rest_framework.authtoken.models import Token
+
 from django.core.files import File
+from django.contrib.auth import authenticate
 
-def get_ip(request):
+import base64
+from argparse import Namespace
 
-    x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+from api.models import *
+from moodifymodel.recog3 import class_labels, return_mood
 
-    if x_forwarded_for:
+# def get_ip(request):
 
-        ip = x_forwarded_for.split(',')[0]
+#     x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
 
-    else:
+#     if x_forwarded_for:
 
-        ip = request.META.get('REMOTE_ADDR')
+#         ip = x_forwarded_for.split(',')[0]
 
-    return ip
+#     else:
+
+#         ip = request.META.get('REMOTE_ADDR')
+
+#     return ip
 
 
 class MoodDetectViewSet(ViewSet):
 
-    BASE_URL = "https://583cc35d272c.ngrok.io"
+    BASE_URL = "http://localhost:8000"
 
-    def log_user(self, request):
+    def signup(self, request):
 
         data = request.data
 
         data = Namespace(**data)
 
-        name = data.name
+        try:
 
-        ip_addr = get_ip(request)
+            user = User.objects.create(
+                email=data.email, username=data.username)
 
-        if not User.objects.filter(name=name).exists():
+            user.set_password(data.password)
 
-            User.objects.create(name=name, ip_addr=ip_addr)
+            user.save()
 
-        return Response({"result": "Success"})
+            Token.objects.get_or_create(user=user)
+
+            return Response({"result": "Success"}, status=status.HTTP_200_OK)
+
+        except Exception as e:
+
+            print(e)
+
+            return Response({"result": "Failure"}, status=status.HTTP_226_IM_USED)
+
+    def login(self, request):
+
+        data = request.data
+
+        data = Namespace(**data)
+
+        try:
+
+            user = authenticate(
+                request, username=data.username, password=data.password)
+
+            if user != None:
+
+                token = Token.objects.filter(user=user).first()
+
+                if token:
+
+                    return Response({"result": "Success", "token": token.key, "username": token.user.username, "pk": user.pk}, status=status.HTTP_200_OK)
+
+        except Exception as e:
+
+            print(e)
+
+            return Response({"result": "Failure"}, status=status.HTTP_401_UNAUTHORIZED)
 
     def view_users(self, request):
 
-        ip_addr = get_ip(request)
+        data = request.data
 
-        curr_user = User.objects.filter(ip_addr=ip_addr).first()
+        data = Namespace(**data)
 
-        users = User.objects.all()
+        token = Token.objects.filter(key=data.token).first()
 
-        users_dict = [
-            {
-                "id": user.pk,
-                "name": user.name,
-                "mood": user.mood,
-                "image": f"{self.BASE_URL if user.image else 'https://img.icons8.com/color/96/000000/circled-user-male-skin-type-1-2--v1.png'}{user.image.url if user.image else ''}",
-                "is_following": user.followers.filter(pk=curr_user.pk).exists()
-            } for user in users]
+        if token:
 
-        return Response(users_dict)
+            curr_user = token.user
+
+            users = User.objects.all().exclude(pk=curr_user.pk)
+
+            users_dict = []
+
+            for user in users:
+                
+                is_following = curr_user.following.filter(following_user_id=user).exists()
+
+                user_dict = {
+                    "id": user.pk,
+                    "name": user.username,
+                    "mood": user.mood,
+                    "image": f"{self.BASE_URL if user.image else 'https://img.icons8.com/color/96/000000/circled-user-male-skin-type-1-2--v1.png'}{user.image.url if user.image else ''}",
+                    "is_following": is_following
+                }
+
+                users_dict.append(user_dict)
+
+            return Response(users_dict)
 
     def view_followers(self, request):
 
-        ip_addr = get_ip(request)
+        data = request.data
 
-        followers_dict ={}
+        data = Namespace(**data)
 
-        user = User.objects.filter(ip_addr=ip_addr).first()
+        token = Token.objects.filter(key=data.token).first()
+
+        user = token.user
 
         if user:
 
             followers = user.followers.all()
+            dx = []
+            for follower_id in followers:
 
-            followers_dict = [{"name": follower.name, "mood": follower.mood} for follower in followers]
+                print(follower_id)
 
-        return Response(followers_dict)
+                user = follower_id.following_user_id
+
+                if user:
+
+                    dx.append({"name": user.username, "mood": user.mood})
+
+        return Response(dx)
 
     def follow_user(self, request):
-
-        ip_addr = get_ip(request)
 
         data = request.data
 
         data = Namespace(**data)
 
-        user = User.objects.filter(ip_addr=ip_addr).first()
+        token = Token.objects.filter(key=data.token).first()
+
+        user = token.user
 
         context = {"result": "Failure"}
 
@@ -97,9 +157,11 @@ class MoodDetectViewSet(ViewSet):
 
             if user_to_be_followed:
 
-                user_to_be_followed.followers.add(user)
+                if not UserFollowing.objects.filter(
+                        user_id=user, following_user_id=user_to_be_followed).exists():
 
-                user.following.add(user_to_be_followed)
+                    UserFollowing.objects.create(
+                        user_id=user, following_user_id=user_to_be_followed)
 
                 context["result"] = "Success"
 
@@ -107,9 +169,13 @@ class MoodDetectViewSet(ViewSet):
 
     def view_following(self, request):
 
-        ip_addr = get_ip(request)
+        data = request.data
 
-        user = User.objects.filter(ip_addr=ip_addr).first()
+        data = Namespace(**data)
+
+        token = Token.objects.filter(key=data.token).first()
+
+        user = token.user
 
         following_dict = {}
 
@@ -117,51 +183,56 @@ class MoodDetectViewSet(ViewSet):
 
             followers = user.following.all()
 
-            following_dict = [{"name": follower.name, "mood": follower.mood} for follower in followers]
+            following_dict = [{"name": follower.user_id.username,
+                               "mood": follower.user_id.mood} for follower in followers]
 
         return Response(following_dict)
 
     def image_analysis(self, request):
-        ip_addr = get_ip(request)
+        data = request.data
+        data = Namespace(**data)
+        token = data.token
+        token = Token.objects.filter(key=token).first()
         songs = []
         mood = "Error try again"
 
-        data = request.data
-        image_data = data.get("image", None)
-        if image_data:
-            image_data = image_data.split(',')[1]
-            image_data = base64.b64decode(image_data)
-            file_name = "media/mood_image.jpg"
-            with open(file_name, 'wb') as f:
-                f.write(image_data)
+        if token:
 
-            '''
+            image_data = data.image
+            if image_data:
+                image_data = image_data.split(',')[1]
+                image_data = base64.b64decode(image_data)
+                file_name = "media/mood_image.jpg"
+                with open(file_name, 'wb') as f:
+                    f.write(image_data)
 
-            Integrate the ML model
+                '''
 
-            '''
+                Integrate the ML model
 
-            model_op = return_mood(file_name)
-            if isinstance(model_op, int):
+                '''
 
-                mood = class_labels[int(model_op)]
-                song_mood_obj = SongMood.objects.filter(mood=mood).first()
+                model_op = return_mood(file_name)
+                if isinstance(model_op, int):
 
-                if song_mood_obj:
+                    mood = class_labels[int(model_op)]
+                    song_mood_obj = SongMood.objects.filter(mood=mood).first()
 
-                    song_qs = Song.objects.filter(mood__in=[song_mood_obj])
-                    songs = [{"id": song.pk, "name": song.name, "singer": song.artist, "cover": f"{self.BASE_URL}{song.poster.url}",
-                              "musicSrc": f"{self.BASE_URL}{song.mp3_file.url}"} for song in song_qs]
+                    if song_mood_obj:
 
-                    user = User.objects.filter(ip_addr=ip_addr).first()
+                        song_qs = Song.objects.filter(mood__in=[song_mood_obj])
+                        songs = [{"id": song.pk, "name": song.name, "singer": song.artist, "cover": f"{self.BASE_URL}{song.poster.url}",
+                                  "musicSrc": f"{self.BASE_URL}{song.mp3_file.url}"} for song in song_qs]
 
-                    if user:
-                        user.mood = mood
-                        try:
-                            img = File(file_name)
-                            user.image.save(user.pk, img, save=True)
-                        except Exception as e:
-                            pass
-                        user.save()
+                        user = token.user
+
+                        if user:
+                            user.mood = mood
+                            try:
+                                img = File(file_name)
+                                user.image.save(user.pk, img, save=True)
+                            except Exception as e:
+                                pass
+                            user.save()
 
         return Response({"mood": mood, "songs": songs})

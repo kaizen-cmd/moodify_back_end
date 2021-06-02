@@ -5,20 +5,24 @@ image_analysis = views.MoodDetectViewSet.as_view({
     'post': 'image_analysis'
 })
 
-log_user = views.MoodDetectViewSet.as_view({
-    'post': 'log_user'
+signup = views.MoodDetectViewSet.as_view({
+    'post': 'signup'
+})
+
+login = views.MoodDetectViewSet.as_view({
+    'post': 'login'
 })
 
 view_users = views.MoodDetectViewSet.as_view({
-    'get': 'view_users'
+    'post': 'view_users'
 })
 
 view_followers = views.MoodDetectViewSet.as_view({
-    'get': 'view_followers'
+    'post': 'view_followers'
 })
 
 view_following = views.MoodDetectViewSet.as_view({
-    'get': 'view_following'
+    'post': 'view_following'
 })
 
 follow_user = views.MoodDetectViewSet.as_view({
@@ -27,7 +31,8 @@ follow_user = views.MoodDetectViewSet.as_view({
 
 urlpatterns = [
     path("post-image/", image_analysis),
-    path("log-user/", log_user),
+    path("signup/", signup),
+    path("login/", login),
     path("view-users/", view_users),
     path("view-followers/", view_followers),
     path("view-following/", view_following),

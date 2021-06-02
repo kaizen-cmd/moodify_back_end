@@ -6,3 +6,4 @@ from api.models import *
 admin.site.register(Song)
 admin.site.register(SongMood)
 admin.site.register(User)
+admin.site.register(UserFollowing)

@@ -1,4 +1,5 @@
 from django.db import models
+from django.contrib.auth.models import AbstractUser
 
 # Create your models here.
 
@@ -32,7 +33,9 @@ class Song(models.Model):
     def __str__(self):
         return self.name
 
-class User(models.Model):
+class User(AbstractUser):
+
+    groups = None
 
     MOOD_CHOICES = (
         ("Happy", "Happy"),
@@ -42,17 +45,23 @@ class User(models.Model):
         ("Neutral", "Neutral")
     )
 
-    name = models.CharField(max_length=150)
     mood = models.CharField(max_length=150, choices=MOOD_CHOICES, blank=True, null=True)
-    followers = models.ManyToManyField(to='self', related_name='foll', blank=True)
-    following = models.ManyToManyField(to='self', related_name='foll2', blank=True)
-    ip_addr = models.GenericIPAddressField()
     image = models.ImageField(upload_to="profile_pics", blank=True, null=True)
 
-    def add_follower(self):
+    def __str__(self) -> str:
 
-        pass
+        return str(self.pk) + self.username
+
+
+class UserFollowing(models.Model):
+
+    user_id = models.ForeignKey(to=User, related_name="following", on_delete=models.CASCADE, blank=True, null=True)
+
+    following_user_id = models.ForeignKey(to=User, related_name="followers", on_delete=models.CASCADE, blank=True, null=True)
+
+    # You can even add info about when user started following
+    created = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
 
-        return self.name + " " + str(self.pk)
+        return self.user_id.username if self.user_id else 'None' + " is " + " followed by " + self.following_user_id.usernmae if self.following_user_id else 'None'
