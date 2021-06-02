@@ -112,6 +112,8 @@ class MoodDetectViewSet(ViewSet):
                 users_dict.append(user_dict)
 
             return Response(users_dict)
+        
+        return Response({}, status=status.HTTP_400_BAD_REQUEST)
 
     def view_followers(self, request):
 
@@ -127,11 +129,10 @@ class MoodDetectViewSet(ViewSet):
 
             followers = user.followers.all()
             dx = []
+
             for follower_id in followers:
 
-                print(follower_id)
-
-                user = follower_id.following_user_id
+                user = follower_id.user_id
 
                 if user:
 
